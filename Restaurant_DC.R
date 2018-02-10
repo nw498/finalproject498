@@ -56,18 +56,17 @@ mydata$common_id <- ifelse(is.na(mydata$common_id),0,1)
 #################################################################################################
 #Format data types
 str(mydata)
-mydata$visit_datetime <- strptime(mydata$visit_datetime,"%Y-%m-%d %X")
-mydata$reserve_datetime <- strptime(mydata$reserve_datetime,"%Y-%m-%d %X")
+mydata$visit_datetime <- strptime(mydata$visit_datetime,"%Y-%m-%d")
+mydata$reserve_datetime <- strptime(mydata$reserve_datetime,"%Y-%m-%d")
 str(mydata)
 
 mydata2 <- mydata[order(mydata$visit_datetime,decreasing=F), ]
-
+summary(mydata2)
 #################################################################################################
 #Replace and Remove NA
 sum(is.na(mydata2$reserve_visitors))
 
-mydata2$common_id[is.na(mydata2$common_id)] <- 0 # 1 if duplicate
-mydata2 <- mydata2[! is.na(mydata2$visit_datetime), ] # 21 NA
+mydata2 <- mydata2[! is.na(mydata2$visit_datetime), ] # 19 NA
 dim(mydata2)
 summary(mydata2)
 
