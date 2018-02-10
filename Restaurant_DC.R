@@ -2,6 +2,7 @@
 
 ls()
 rm(list=ls())
+dev.off()
 setwd("/Users/decolvin/Box Sync/1 Northwestern MSPA/PREDICT 498_DL Capstone/Final Project/")
 
 #################################################################################################
@@ -49,6 +50,8 @@ colnames(hpg) <- c("store_id","visit_datetime","reserve_datetime",
 
 mydata <- rbind(air,hpg)
 summary(mydata)
+
+mydata$common_id <- ifelse(is.na(mydata$common_id),0,1)
 
 #################################################################################################
 #Format data types
@@ -156,9 +159,14 @@ mydata.ts <- ts(mydata.day$reserve_visitors,
 tsdisplay(mydata.ts)
 tsdisplay(diff(mydata.ts,findfrequency(mydata.day$reserve_visitors)))
 
+####################################################################
+####################################################################
+#Scale and create split sets
+mydata.day$holiday_flg_scale <- scale(mydata.day$holiday_flg)
+xreg.train <- cbind(mydata.day$holiday_flg_scale[train.day],mydata.day$day_of_week[train.day])
+xreg.test <- cbind(mydata.day$holiday_flg_scale[valid.day],mydata.day$day_of_week[valid.day])
+
 ###ARIMA
-xreg.train <- cbind(mydata.day$holiday_flg[train.day],mydata.day$day_of_week[train.day])
-xreg.test <- cbind(mydata.day$holiday_flg[valid.day],mydata.day$day_of_week[valid.day])
 arima1 <- auto.arima(log1p(mydata.ts[train.day]), stepwise = F, xreg = xreg.train)
 arima1
 plot(mydata.ts[train.day], type='l')
@@ -222,6 +230,7 @@ area1 <- mydata3[mydata3$area_name==specific_area,]
 area1.day <- aggregate(reserve_visitors ~ visit_day, area1, sum)
 area1.day <- merge(area1.day, holiday, by.x="visit_day",
                    by.y="calendar_date", all.x = T)
+area1.day$holiday_flg_scale <- scale(area1.day$holiday_flg)
 area1.ts <- ts(area1.day$reserve_visitors, frequency = findfrequency(area1.day))
 plot(area1.ts, type='l')
 difftime <- as.numeric(forecast_date - area1.day[1,"visit_day"])
@@ -232,6 +241,7 @@ genre1 <- mydata3[mydata3$genre_name==specific_genre,]
 genre1.day <- aggregate(reserve_visitors ~ visit_day, genre1, sum)
 genre1.day <- merge(genre1.day, holiday, by.x="visit_day",
                    by.y="calendar_date", all.x = T)
+genre1.day$holiday_flg_scale <- scale(genre1.day$holiday_flg)
 genre1.ts <- ts(genre1.day$reserve_visitors, frequency = findfrequency(genre1.day))
 plot(genre1.ts, type='l')
 difftime <- as.numeric(forecast_date - genre1.day[1,"visit_day"])
@@ -242,6 +252,7 @@ restaurant1 <- mydata3[mydata3$store_id==specific_restaurant,]
 restaurant1.day <- aggregate(reserve_visitors ~ visit_day, restaurant1, sum)
 restaurant1.day <- merge(restaurant1.day, holiday, by.x="visit_day",
                    by.y="calendar_date", all.x = T)
+restaurant1.day$holiday_flg_scale <- scale(restaurant1.day$holiday_flg)
 restaurant1.ts <- ts(restaurant1.day$reserve_visitors, frequency = findfrequency(restaurant1.day))
 plot(restaurant1.ts, type='l')
 difftime <- as.numeric(forecast_date - restaurant1.day[1,"visit_day"])
@@ -253,26 +264,28 @@ library(forecast)
 ###NNETAR  
 training <- which(restaurant1.day$visit_day < "2017-04-23")
 validation <- which(restaurant1.day$visit_day >= "2017-04-23")
+#xreg.training <- cbind(restaurant1.day$holiday_flg[training],restaurant1.day$day_of_week[training])
+#xreg.validation <- cbind(restaurant1.day$holiday_flg[validation],restaurant1.day$day_of_week[validation])
+xreg.training <- restaurant1.day$holiday_flg[training]
+xreg.validation <- restaurant1.day$holiday_flg[validation]
+
 best.p <- rep(0,20)
 nodes <- rep(0,20)
 for (i in 1:20) {
-  fit <- nnetar(restaurant1.ts[training], size = i, p = 1, xreg=restaurant1.day[training,"holiday_flg"])
-  fcast <- forecast(fit, h=length(restaurant1.ts[validation]), xreg=restaurant1.day[validation,"holiday_flg"])
+  fit <- nnetar(restaurant1.ts[training], size = i, p = 1, xreg=xreg.training)
+  fcast <- forecast(fit, h=length(restaurant1.ts[validation]), xreg=xreg.validation)
   nodes[i] <- mean((restaurant1.day[validation,"reserve_visitors"] - fcast$mean)^2)
 }  
 
 for (i in 1:20) {
-  fit <- nnetar(restaurant1.ts[training], size = which.min(nodes), p = i, xreg=restaurant1.day[training,"holiday_flg"])
-  fcast <- forecast(fit, h=length(restaurant1.ts[validation]), xreg=restaurant1.day[validation,"holiday_flg"])
+  fit <- nnetar(restaurant1.ts[training], size = which.min(nodes), p = i, xreg=xreg.training)
+  fcast <- forecast(fit, h=length(restaurant1.ts[validation]), xreg=xreg.validation)
   best.p[i] <- mean((restaurant1.day[validation,"reserve_visitors"] - fcast$mean)^2)
 }  
 
 
-training <- which(restaurant1.day$visit_day < "2017-04-23")
-validation <- which(restaurant1.day$visit_day >= "2017-04-23")
-
-nn.train <- nnetar(restaurant1.ts[training], size=which.min(nodes), p=which.min(best.p), xreg=restaurant1.day[training,"holiday_flg"])
-fcast.nn.train <- forecast(nn.train, h=length(restaurant1.ts[validation]), xreg=restaurant1.day[validation,"holiday_flg"])
+nn.train <- nnetar(restaurant1.ts[training], size=which.min(nodes), p=which.min(best.p), xreg=xreg.training)
+fcast.nn.train <- forecast(nn.train, h=length(restaurant1.ts[validation]), xreg=xreg.validation)
 plot(fcast.nn.train, main="NNETAR Forecast")
   lines(restaurant1.day[,"reserve_visitors"])
 
