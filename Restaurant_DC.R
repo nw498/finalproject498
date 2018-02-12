@@ -5,6 +5,7 @@ rm(list=ls())
 dev.off()
 setwd("/Users/decolvin/Box Sync/1 Northwestern MSPA/PREDICT 498_DL Capstone/Final Project/")
 
+library(dplyr)
 #################################################################################################
 #Load data and summary
 air.reserve <- read.csv("Data/air_reserve.csv", header=T, blank.lines.skip=T)
@@ -31,27 +32,33 @@ summary(store.id)
 
 #################################################################################################
 #Merge data
-store.id$common_id <- rep(1,nrow(store.id))
+air <- merge(air.reserve, store.id, by="air_store_id", all = T)
+hpg <- inner_join(hpg.reserve, store.id, by="hpg_store_id", all = T)
 
-air <- merge(air.reserve, store.id[,c(1,3)], by="air_store_id", all = T)
-air <- merge(air, air.store, by = "air_store_id")
-#air <- merge(air, air.visits, by = "air_store_id")
-dim(air)
-colnames(air) <- c("store_id","visit_datetime","reserve_datetime",
-                   "reserve_visitors","common_id", "genre_name","area_name",
-                   "latitude","longitude")
+air.hpg <- rbind(air,hpg)
+air.hpg2 <- left_join(air.hpg,air.store,by="air_store_id")
+#air4 <- left_join(air3,hpg.store,by="hpg_store_id")
 
-hpg <- merge(hpg.reserve, store.id[,c(2,3)], by="hpg_store_id", all = T)
-hpg <- merge(hpg, hpg.store, by = "hpg_store_id")
-dim(hpg)
-colnames(hpg) <- c("store_id","visit_datetime","reserve_datetime",
-                   "reserve_visitors","common_id","genre_name","area_name",
-                   "latitude","longitude")
+#air2$visit_date <- as.Date(air2$visit_datetime)
+#air.visits$visit_date <- as.Date(air.visits$visit_date)
+#air3 <- left_join(air2,air.visits,by=c("air_store_id"))
 
-mydata <- rbind(air,hpg)
-summary(mydata)
+#colnames(air) <- c("store_id","visit_datetime","reserve_datetime",
+#                   "reserve_visitors","common_id", "genre_name","area_name",
+#                   "latitude","longitude")
 
-mydata$common_id <- ifelse(is.na(mydata$common_id),0,1)
+#hpg <- inner_join(hpg.reserve, store.id, by="hpg_store_id", all = T)
+#hpg <- merge(hpg, hpg.store, by = "hpg_store_id")
+#dim(hpg)
+#colnames(hpg) <- c("store_id","visit_datetime","reserve_datetime",
+#                   "reserve_visitors","common_id","genre_name","area_name",
+#                   "latitude","longitude")
+
+#mydata <- rbind(air,hpg)
+#summary(mydata)
+
+#mydata$common_id <- ifelse(is.na(mydata$common_id),0,1)
+mydata <- air.hpg2
 
 #################################################################################################
 #Format data types
@@ -72,7 +79,7 @@ summary(mydata2)
 
 #################################################################################################
 #Add variables
-mydata2$diff <- (mydata2$visit_datetime - mydata2$reserve_datetime)
+#mydata2$diff <- (mydata2$visit_datetime - mydata2$reserve_datetime)
 
 #################################################################################################
 #Identify outliers
@@ -97,10 +104,37 @@ boxplot(mydata2$reserve_visitors, notch = T, col = "light blue")
 #mapPoints
 
 #################################################################################################
-#No repeat restaurants
+#################################################################################################
+#Aggregate to daily
 
-mydata3 <- mydata2[mydata2$common_id==0,]
-plot(mydata3$reserve_visitors, type='l')
+mydata3 <- mydata2
+mydata3$visit_date <- as.Date(mydata2$reserve_datetime)
+mydata3 <- mydata3[,-c(2,3)]
+
+mydata.day <- mydata3 %>%
+  group_by(visit_date, air_store_id) 
+
+#mydata.day2 <- left_join(mydata.day, air.visits, by="air_store_id")
+plot(mydata.day2$visit_date ,mydata.day2$reserve_visitors, type='l',
+     main="Daily Visitors", ylab="Visitors", xlab="")
+
+tail(mydata.day)
+
+air.visits$air_store_id <- as.character(air.visits$air_store_id)
+air.visits$visit_date <- as.Date(air.visits$visit_date)
+
+training.data <- merge(air.visits, mydata.day, by=c("air_store_id","visit_date"))
+dim(training.data)
+
+#mydata.day2 <- right_join(mydata.day,air.visits,by="air_store_id")
+holiday$calendar_date <- as.Date(holiday$calendar_date)
+training.data2 <- merge(training.data, holiday, by.x="visit_date", by.y="calendar_date")
+
+mydata.day[mydata.day$reserve_visitors > 50000,]
+
+train.day <- which(training.data2$visit_date <= "2017-03-09")
+valid.day <- which(training.data2$visit_date > "2017-03-09")
+
 
 #################################################################################################
 #Plots
@@ -124,27 +158,8 @@ sort(table(mydata3$area_name), decreasing = T)[1:10]
 #######################################################################
 #Set training rows and validation rows
 
-train <- which(mydata3$visit_datetime < "2017-04-23")
-valid <- which(mydata3$visit_datetime >= "2017-04-23")
-
-#################################################################################################
-#################################################################################################
-#################################################################################################
-#Aggregate to daily
-mydata3$visit_day <- as.Date(mydata3$visit_datetime)
-mydata.day <- aggregate(reserve_visitors ~ visit_day,data=mydata3, FUN="sum")
-plot(mydata.day$visit_day ,mydata.day$reserve_visitors, type='l',
-     main="Daily Visitors", ylab="Visitors", xlab="")
-
-tail(mydata.day)
-
-holiday$calendar_date <- as.Date(holiday$calendar_date)
-mydata.day <- merge(mydata.day, holiday, by.x="visit_day", by.y="calendar_date")
-
-mydata.day[mydata.day$reserve_visitors > 50000,]
-
-train.day <- which(mydata.day$visit_day < "2017-04-23")
-valid.day <- which(mydata.day$visit_day >= "2017-04-23")
+train <- which(mydata3$visit_datetime <= "2017-03-09")
+valid <- which(mydata3$visit_datetime > "2017-03-09")
 
 #################################################################################################
 #################################################################################################
@@ -152,18 +167,18 @@ valid.day <- which(mydata.day$visit_day >= "2017-04-23")
 #Time series analysis/forecasts of all data
 
 library(forecast)
-mydata.ts <- ts(mydata.day$reserve_visitors,
-                frequency=findfrequency(mydata.day$reserve_visitors))
+mydata.ts <- ts(training.data2$visitors,
+                frequency=findfrequency(training.data2$reserve_visitors))
 
 tsdisplay(mydata.ts)
-tsdisplay(diff(mydata.ts,findfrequency(mydata.day$reserve_visitors)))
+tsdisplay(diff(mydata.ts,findfrequency(training.data2$visitors)))
 
 ####################################################################
 ####################################################################
 #Scale and create split sets
-mydata.day$holiday_flg_scale <- scale(mydata.day$holiday_flg)
-xreg.train <- cbind(mydata.day$holiday_flg_scale[train.day],mydata.day$day_of_week[train.day])
-xreg.test <- cbind(mydata.day$holiday_flg_scale[valid.day],mydata.day$day_of_week[valid.day])
+training.data2$holiday_flg_scale <- scale(training.data2$holiday_flg)
+xreg.train <- cbind(training.data2$holiday_flg_scale[train.day],training.data2$day_of_week[train.day])
+xreg.test <- cbind(training.data2$holiday_flg_scale[valid.day],training.data2$day_of_week[valid.day])
 
 ###ARIMA
 arima1 <- auto.arima(log1p(mydata.ts[train.day]), stepwise = F, xreg = xreg.train)
@@ -182,8 +197,8 @@ arima1.day.acc
 
 arima2 <- Arima(mydata.ts[train.day], order=c(2,1,2),
                 xreg = mydata.day$holiday_flg[train.day])
-fcast2 <- forecast(arima2, h=length(mydata.ts[valid.day]), xreg=mydata.day$holiday_flg[valid.day])
-arima2.day.acc <- accuracy(fcast2,mydata.day[valid.day,"reserve_visitors"])
+fcast2 <- forecast(arima2, h=length(mydata.ts[valid.day]), xreg=training.data2$holiday_flg[valid.day])
+arima2.day.acc <- accuracy(fcast2,training.data2[valid.day,"visitors"])
 arima2.day.acc
 
 ###NNETAR  
@@ -204,16 +219,17 @@ for (i in 1:20) {
 plot(best.p, type='b') 
 
 set.seed(123)
-xreg.train <- cbind(mydata.day$holiday_flg[train.day],mydata.day$day_of_week[train.day])
-xreg.test <- cbind(mydata.day$holiday_flg[valid.day],mydata.day$day_of_week[valid.day])
-nn1 <- nnetar(log1p(mydata.ts[train.day]), size=which.min(nodes), p=which.min(best.p), xreg=xreg.train)
+xreg.train <- cbind(training.data2$holiday_flg[train.day],training.data2$day_of_week[train.day])
+xreg.test <- cbind(training.data2$holiday_flg[valid.day],training.data2$day_of_week[valid.day])
+nn1 <- nnetar(log1p(mydata.ts[train.day]), size=20, p=1, xreg=xreg.train)
 fcast.nn1 <- forecast(nn1, h=length(mydata.ts[valid.day]), xreg=xreg.test)
-plot(mydata.day$reserve_visitors, type='l', main="NNETAR Forecast")
-lines((517-38):517,expm1(fcast.nn1$mean),col='red')
+plot(training.data2$visitors, type='l', main="NNETAR Forecast")
+lines(expm1(fcast.nn1$mean),col='red')
 
-nn1.logerror <- log((expm1(fcast.nn1$mean)+1)/(mydata.day$reserve_visitors[valid.day]+1))    
+#nn1.logerror <- log((expm1(fcast.nn1$mean)+1)/(mydata.day$reserve_visitors[valid.day]+1))    
+nn1.logerror <- log((expm1(fitted.values(nn1)[2:85421])+1)/(training.data2$visitors[2:85421]+1))    
 sqrt(mean((nn1.logerror)^2))
-nn.day.acc <- accuracy(expm1(fcast.nn1$mean),mydata.day[valid.day,"reserve_visitors"])
+nn.day.acc <- accuracy(expm1(fcast.nn1$mean),training.data2[valid.day,"visitors"])
 nn.day.acc
 
 #################################################################################################
